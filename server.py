@@ -55,6 +55,23 @@ async def read_mcp_output(process):
             logger.error(f"Error reading MCP output: {e}")
             break
 
+async def start_stream_proxy():
+    """Start stream proxy server for ESP32"""
+    try:
+        logger.info("Starting ESP32 stream proxy on port 5001...")
+        proc = subprocess.Popen(
+            [sys.executable, 'stream_proxy.py'],
+            env={**os.environ, 'STREAM_PORT': '5001'},
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+            text=True
+        )
+        logger.info(f"Stream proxy started with PID: {proc.pid}")
+        return proc
+    except Exception as e:
+        logger.error(f"Failed to start stream proxy: {e}")
+        return None
+
 async def start_mcp_pipe():
     """Start MCP pipe as subprocess"""
     global mcp_process
@@ -101,16 +118,28 @@ async def start_mcp_pipe():
 
 async def start_background_tasks(app):
     """Start background tasks on app startup"""
+    # Start stream proxy first
+    app['stream_proxy'] = await start_stream_proxy()
+    # Then start MCP pipe
     app['mcp_task'] = asyncio.create_task(start_mcp_pipe())
 
 async def cleanup_background_tasks(app):
     """Cleanup on shutdown"""
     global mcp_process
     logger.info("Shutting down server...")
+    
+    # Terminate stream proxy
+    if 'stream_proxy' in app and app['stream_proxy']:
+        logger.info(f"Terminating stream proxy (PID: {app['stream_proxy'].pid})")
+        app['stream_proxy'].terminate()
+        app['stream_proxy'].wait()
+    
+    # Terminate MCP process
     if mcp_process:
         logger.info(f"Terminating MCP process (PID: {mcp_process.pid})")
         mcp_process.terminate()
         mcp_process.wait()
+    
     app['mcp_task'].cancel()
     await app['mcp_task']
     logger.info("Cleanup complete")

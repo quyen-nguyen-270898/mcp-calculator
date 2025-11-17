@@ -5,6 +5,11 @@
       "command": "python3",
       "args": ["calculator.py"]
     },
+    "local-stdio-music": {
+      "type": "stdio",
+      "command": "python3",
+      "args": ["music_streamer.py"]
+    },
     "remote-sse-server": {
       "type": "sse",
       "url": "https://api.example.com/sse",
