@@ -65,7 +65,7 @@ def handle_list_tools(request_id, params):
                 },
                 {
                     "name": "get_stream_url",
-                    "description": "Get direct audio stream URL for ESP32. Supports YouTube URL or video ID. Returns HTTP stream URL suitable for ESP32.",
+                    "description": "Prepare and return a server-hosted audio stream URL (downloads MP3, then serves). Supports YouTube URL or video ID.",
                     "inputSchema": {
                         "type": "object",
                         "properties": {
@@ -75,7 +75,7 @@ def handle_list_tools(request_id, params):
                             },
                             "format": {
                                 "type": "string",
-                                "description": "Audio format preference: 'best' (highest quality) or 'esp32' (optimized for ESP32, ~128kbps)",
+                                "description": "Direct-stream fallback quality: 'best' or 'esp32' (optional)",
                                 "enum": ["best", "esp32"],
                                 "default": "esp32"
                             }
@@ -119,7 +119,7 @@ def handle_list_tools(request_id, params):
                 },
                 {
                     "name": "get_esp32_stream",
-                    "description": "Get ready-to-use stream URL for ESP32. Returns direct stream URL that ESP32 can play immediately. Optimized for ESP32 (128kbps audio).",
+                    "description": "Get ready-to-use stream URL for ESP32. Server downloads MP3 then streams from Render cache (128kbps+).",
                     "inputSchema": {
                         "type": "object",
                         "properties": {
@@ -183,40 +183,41 @@ def handle_call_tool(request_id, params):
             format_pref = arguments.get("format", "esp32")
             
             video_id = extract_video_id(url)
-            logger.info(f"🎵 Getting stream for video: {video_id} (format: {format_pref})")
+            logger.info(f"🎵 Preparing proxy stream for: {video_id} (format: {format_pref})")
+
+            render_app_url = os.environ.get('PUBLIC_BASE_URL') or os.environ.get('RENDER_EXTERNAL_URL', 'https://mcp-calculator-3q3k.onrender.com')
+            proxy_audio_url = f"{render_app_url}/audio/{video_id}"
+            proxy_json_url = f"{render_app_url}/url/{video_id}"
             
+            # Best-effort direct stream info (fallback/debug)
             stream_info = get_audio_stream(video_id, format_pref)
-            
             if stream_info:
-                logger.info(
-                    "✅ Stream info obtained via %s", stream_info.get("source", "unknown")
-                )
-                
-                return {
-                    "jsonrpc": "2.0",
-                    "id": request_id,
-                    "result": {
-                        "content": [
-                            {
-                                "type": "text",
-                                "text": json.dumps({
-                                    "success": True,
-                                    "stream": stream_info
-                                }, ensure_ascii=False)
-                            }
-                        ]
-                    }
-                }
+                logger.info("✅ Direct stream obtained via %s", stream_info.get("source", "unknown"))
             else:
-                logger.error(f"❌ Failed to get stream for {video_id}")
-                return {
-                    "jsonrpc": "2.0",
-                    "id": request_id,
-                    "error": {
-                        "code": -32000,
-                        "message": "Failed to get stream URL"
-                    }
+                logger.warning("⚠️ Direct stream unavailable; rely on proxy download")
+            
+            payload = {
+                "success": True,
+                "video_id": video_id,
+                "mode": "download_to_serve",
+                "proxy_audio_url": proxy_audio_url,
+                "status_url": proxy_json_url,
+                "note": "Server downloads MP3 then serves from cache. First hit may take a few seconds.",
+                "direct_stream_fallback": stream_info,
+            }
+
+            return {
+                "jsonrpc": "2.0",
+                "id": request_id,
+                "result": {
+                    "content": [
+                        {
+                            "type": "text",
+                            "text": json.dumps(payload, ensure_ascii=False)
+                        }
+                    ]
                 }
+            }
         
         elif tool_name == "get_invidious_stream":
             video_id = arguments.get("video_id", "")
@@ -272,12 +273,12 @@ def handle_call_tool(request_id, params):
                 duration = info.get('duration', 0)
                 logger.info(f"📝 Video: {title}")
                 
-                # Provide direct proxy stream URL plus Render proxy endpoint
-                render_app_url = os.environ.get('RENDER_EXTERNAL_URL', 'https://mcp-calculator-3q3k.onrender.com')
-                proxy_url = f"{render_app_url}/url/{video_id}"
+                render_app_url = os.environ.get('PUBLIC_BASE_URL') or os.environ.get('RENDER_EXTERNAL_URL', 'https://mcp-calculator-3q3k.onrender.com')
+                proxy_json_url = f"{render_app_url}/url/{video_id}"
+                proxy_audio_url = f"{render_app_url}/audio/{video_id}"
                 stream_info = get_audio_stream(video_id, 'esp32')
                 
-                logger.info(f"✅ Returning proxy URL for ESP32")
+                logger.info(f"✅ Returning download-to-serve proxy URL for ESP32")
                 
                 return {
                     "jsonrpc": "2.0",
@@ -291,16 +292,18 @@ def handle_call_tool(request_id, params):
                                     "video_id": video_id,
                                     "title": title,
                                     "duration": duration,
-                                    "proxy_url": proxy_url,
+                                    "proxy_url": proxy_json_url,
+                                    "proxy_audio_url": proxy_audio_url,
                                     "direct_stream": stream_info,
+                                    "mode": "download_to_serve",
                                     "youtube_url": f"https://youtube.com/watch?v={video_id}",
                                     "instructions": {
-                                        "step_1": f"ESP32 GET request to: {proxy_url}",
-                                        "step_2": "Parse JSON response to get 'stream_url'",
-                                        "step_3": "Use: audio.connecttohost(stream_url)",
-                                        "note": "Stream URL expires in ~6 hours, re-fetch if needed"
+                                        "step_1": f"ESP32 GET {proxy_json_url} to trigger download & get stream_url",
+                                        "step_2": "Parse JSON -> stream_url",
+                                        "step_3": "audio.connecttohost(stream_url)",
+                                        "note": "First call downloads MP3 to cache; subsequent plays are instant"
                                     },
-                                    "esp32_code_example": f"HTTPClient http; http.begin(\"{proxy_url}\"); String json = http.getString(); // parse to get stream_url"
+                                    "esp32_code_example": f"HTTPClient http; http.begin(\"{proxy_json_url}\"); String json = http.getString(); // parse to get stream_url"
                                 }, ensure_ascii=False)
                             }
                         ]
@@ -409,7 +412,7 @@ def main():
                 logger.info("✅ Initialized successfully")
             elif method == "tools/list":
                 response = handle_list_tools(request_id, params)
-                logger.info("✅ Sent tools list (3 tools)")
+                logger.info("✅ Sent tools list (5 tools)")
             elif method == "tools/call":
                 response = handle_call_tool(request_id, params)
             elif method == "notifications/initialized":

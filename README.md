@@ -19,7 +19,7 @@ Provides audio streaming endpoints for ESP32
 
 1. **Deploy on Render** (done!)
 2. **ESP32 connects** to `https://your-app.onrender.com/url/{video_id}`
-3. **Get stream URL** and play!
+3. First request downloads MP3 to the server cache; subsequent plays stream directly from Render.
 
 📖 **[ESP32 Cloud Setup Guide](ESP32_CLOUD_SETUP.md)** - Complete ESP32 code & setup
 
@@ -31,9 +31,8 @@ String url = "https://your-app.onrender.com/url/" + videoId;
 // Fetch URL → Parse JSON → Play stream
 ```
 
-**Services on Render:**
-- Port 10000: Health check + MCP wrapper
-- Port 5001: Stream proxy for ESP32
+**Services on Render (single public port):**
+- Port 10000: Health check + MCP wrapper + `/audio/{video_id}`, `/url/{video_id}`, `/stream/{video_id}` (download→serve)
 - MCP: Calculator + Music search
 
 ## Local Development
@@ -67,6 +66,7 @@ python3 mcp_pipe.py
    - Key: `MCP_ENDPOINT`
    - Value: Your WebSocket endpoint URL
    - (Optional) `YOUTUBE_API_KEY`: Official YouTube Data API key for reliable search
+   - (Optional) `PUBLIC_BASE_URL`: Override Render external URL if auto-detection fails
 
 4. Deploy!
 
@@ -83,4 +83,4 @@ Health check endpoint: `https://your-app.onrender.com/health`
 - You can override proxy frontends without redeploying:
    - `PIPED_API_INSTANCES` – comma-separated list of Piped API hosts.
    - `INVIDIOUS_API_INSTANCES` – comma-separated list of Invidious API hosts.
-- The ESP32 stream proxy caches resolved URLs for ~4 hours to minimize repeated proxy hits.
+- The ESP32 stream proxy now **downloads MP3 then streams from cache** (default cache TTL: 6 hours, dir: `/tmp/audio_cache`).

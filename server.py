@@ -2,6 +2,7 @@
 """
 Wrapper server for Render deployment
 Runs MCP pipe in background while providing HTTP health check endpoint
+and exposes music streaming routes (download-to-serve) on the same port.
 """
 import asyncio
 import subprocess
@@ -9,6 +10,8 @@ import os
 import sys
 from aiohttp import web
 import logging
+
+from stream_proxy import init_app as register_stream_routes
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger('RenderServer')
@@ -55,30 +58,13 @@ async def read_mcp_output(process):
             logger.error(f"Error reading MCP output: {e}")
             break
 
-async def start_stream_proxy():
-    """Start stream proxy server for ESP32"""
-    try:
-        logger.info("Starting ESP32 stream proxy on port 5001...")
-        proc = subprocess.Popen(
-            [sys.executable, 'stream_proxy.py'],
-            env={**os.environ, 'STREAM_PORT': '5001'},
-            stdout=subprocess.PIPE,
-            stderr=subprocess.STDOUT,
-            text=True
-        )
-        logger.info(f"Stream proxy started with PID: {proc.pid}")
-        return proc
-    except Exception as e:
-        logger.error(f"Failed to start stream proxy: {e}")
-        return None
-
 async def start_mcp_pipe():
     """Start MCP pipe as subprocess"""
     global mcp_process
     
     endpoint = os.environ.get('MCP_ENDPOINT')
     if not endpoint:
-        logger.error("MCP_ENDPOINT not set!")
+        logger.warning("MCP_ENDPOINT not set - skipping MCP pipe startup")
         return
     
     logger.info(f"Starting MCP pipe connecting to: {endpoint[:50]}...")
@@ -118,21 +104,23 @@ async def start_mcp_pipe():
 
 async def start_background_tasks(app):
     """Start background tasks on app startup"""
-    # Start stream proxy first
-    app['stream_proxy'] = await start_stream_proxy()
-    # Then start MCP pipe
-    app['mcp_task'] = asyncio.create_task(start_mcp_pipe())
+    # Only start MCP pipe if endpoint is configured
+    endpoint = os.environ.get('MCP_ENDPOINT')
+    if endpoint:
+        # Don't await - let it run in background
+        app['mcp_task'] = asyncio.create_task(start_mcp_pipe())
+        logger.info("MCP pipe task scheduled (running in background)")
+    else:
+        logger.warning("MCP_ENDPOINT not set - MCP pipe will not start")
+        app['mcp_task'] = None
+    
+    # Return immediately so server can start accepting connections
+    logger.info("Startup tasks completed - server ready to accept connections")
 
 async def cleanup_background_tasks(app):
     """Cleanup on shutdown"""
     global mcp_process
     logger.info("Shutting down server...")
-    
-    # Terminate stream proxy
-    if 'stream_proxy' in app and app['stream_proxy']:
-        logger.info(f"Terminating stream proxy (PID: {app['stream_proxy'].pid})")
-        app['stream_proxy'].terminate()
-        app['stream_proxy'].wait()
     
     # Terminate MCP process
     if mcp_process:
@@ -140,8 +128,12 @@ async def cleanup_background_tasks(app):
         mcp_process.terminate()
         mcp_process.wait()
     
-    app['mcp_task'].cancel()
-    await app['mcp_task']
+    if app.get('mcp_task'):
+        app['mcp_task'].cancel()
+        try:
+            await app['mcp_task']
+        except asyncio.CancelledError:
+            pass
     logger.info("Cleanup complete")
 
 @web.middleware
@@ -162,22 +154,55 @@ async def logging_middleware(request, handler):
 
 def main():
     """Main entry point"""
-    port = int(os.environ.get('PORT', 10000))
-    
-    app = web.Application(middlewares=[logging_middleware])
-    app.router.add_get('/health', health_check)
-    app.router.add_get('/status', status)
-    app.router.add_get('/', status)
-    
-    app.on_startup.append(start_background_tasks)
-    app.on_cleanup.append(cleanup_background_tasks)
-    
-    logger.info(f"=" * 60)
-    logger.info(f"MCP Calculator Bridge Server Starting")
-    logger.info(f"Port: {port}")
-    logger.info(f"Endpoints: /health, /status, /")
-    logger.info(f"=" * 60)
-    web.run_app(app, host='0.0.0.0', port=port, access_log=logger)
+    try:
+        port_env = os.environ.get('PORT')
+        if not port_env:
+            logger.warning("PORT env not set; defaulting to 10000 (suitable for local dev only)")
+            # For Render: try common Render port if PORT not set
+            port = 10000
+        else:
+            port = int(port_env)
+        
+        logger.info(f"Attempting to bind to port: {port}")
+        logger.info(f"Environment PORT variable: {port_env or 'NOT SET'}")
+        
+        app = web.Application(middlewares=[logging_middleware])
+        app.router.add_get('/health', health_check)
+        app.router.add_get('/status', status)
+        app.router.add_get('/', status)
+
+        # Expose music streaming routes on the same public port
+        logger.info("Registering stream proxy routes...")
+        register_stream_routes(app)
+        logger.info("Stream proxy routes registered successfully")
+        
+        app.on_startup.append(start_background_tasks)
+        app.on_cleanup.append(cleanup_background_tasks)
+        
+        logger.info(f"=" * 60)
+        logger.info(f"MCP Calculator Bridge Server Starting")
+        logger.info(f"Port: {port}")
+        logger.info("Endpoints: /health, /status, /audio/{id}, /url/{id}, /stream/{id}")
+        logger.info(f"=" * 60)
+        
+        logger.info(f"Starting aiohttp web server on 0.0.0.0:{port}...")
+        
+        # Use print to ensure output even if logging fails
+        print(f"DEBUG: About to call web.run_app on port {port}", flush=True)
+        
+        try:
+            web.run_app(app, host='0.0.0.0', port=port, access_log=logger, print=logger.info)
+        except Exception as run_error:
+            logger.error(f"web.run_app failed: {run_error}", exc_info=True)
+            print(f"FATAL: web.run_app crashed: {run_error}", flush=True)
+            raise
+            
+    except Exception as e:
+        logger.error(f"FATAL ERROR during startup: {e}", exc_info=True)
+        print(f"FATAL STARTUP ERROR: {e}", flush=True)
+        import traceback
+        traceback.print_exc()
+        raise
 
 if __name__ == '__main__':
     main()

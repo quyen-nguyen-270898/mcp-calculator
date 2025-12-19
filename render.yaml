@@ -3,9 +3,7 @@ services:
     name: mcp-calculator
     env: python
     buildCommand: pip install -r requirements.txt
-    startCommand: python server.py
+    startCommand: python3 server.py
     envVars:
       - key: MCP_ENDPOINT
         sync: false
-      - key: PORT
-        value: 10000
