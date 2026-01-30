@@ -1,10 +1,10 @@
 {
-  "name": "@quyen-nguyen/mcp-calculator",
+  "name": "mcp-calculator-qn",
   "version": "1.0.0",
   "description": "A simple MCP server for mathematical calculations with support for Python expressions, math and random modules",
   "type": "module",
   "bin": {
-    "mcp-calculator": "./dist/index.js"
+    "mcp-calculator": "./index.js"
   },
   "keywords": [
     "mcp",
