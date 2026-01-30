@@ -1,0 +1,26 @@
+{
+  "name": "calculator",
+  "version": "1.0.0",
+  "description": "A simple MCP server for mathematical calculations with support for Python expressions, math and random modules",
+  "transport": "stdio",
+  "command": {
+    "type": "uvx",
+    "package": "mcp-calculator"
+  },
+  "tools": [
+    {
+      "name": "calculator",
+      "description": "For mathematical calculation, always use this tool to calculate the result of a python expression. You can use 'math' or 'random' directly, without 'import'.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "python_expression": {
+            "type": "string",
+            "description": "A valid Python expression to evaluate"
+          }
+        },
+        "required": ["python_expression"]
+      }
+    }
+  ]
+}

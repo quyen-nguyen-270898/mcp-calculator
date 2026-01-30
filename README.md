@@ -36,7 +36,7 @@ pip install -e .
 ### Running the Server
 
 ```bash
-python calculator.py
+python -m mcp_calculator
 ```
 
 Or if installed:
