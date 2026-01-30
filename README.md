@@ -13,8 +13,14 @@ A simple and efficient MCP (Model Context Protocol) server that provides mathema
 
 ### Using uvx (Recommended)
 
+From PyPI (once published):
 ```bash
 uvx mcp-calculator
+```
+
+From GitHub (current):
+```bash
+uvx --from git+https://github.com/quyen-nguyen-270898/mcp-calculator.git mcp-calculator
 ```
 
 ### Using pip
