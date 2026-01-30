@@ -1,86 +1,170 @@
-# MCP Multi-Tool Server
+# MCP Calculator Server
 
-MCP servers providing calculator and music streaming capabilities.
+A simple and efficient MCP (Model Context Protocol) server that provides mathematical calculation capabilities through Python expressions.
 
-## Available Servers
+## Features
 
-### 1. Calculator (`calculator.py`)
-Evaluate Python mathematical expressions
+- ✨ **Mathematical Calculations**: Evaluate Python expressions with full math module support
+- 🎲 **Random Number Generation**: Access to Python's random module
+- 🔒 **Safe Evaluation**: Sandboxed execution environment
+- 📡 **STDIO Transport**: Easy integration with MCP clients
 
-### 2. Music Streamer (`music_streamer.py`)
-Search music from YouTube
+## Installation
 
-### 3. Stream Proxy (`stream_proxy.py`)
-Provides audio streaming endpoints for ESP32
+### Using uvx (Recommended)
 
-## 🎵 ESP32 Music Player Setup
-
-**Complete cloud solution - no local server needed!**
-
-1. **Deploy on Render** (done!)
-2. **ESP32 connects** to `https://your-app.onrender.com/url/{video_id}`
-3. First request downloads MP3 to the server cache; subsequent plays stream directly from Render.
-
-📖 **[ESP32 Cloud Setup Guide](ESP32_CLOUD_SETUP.md)** - Complete ESP32 code & setup
-
-**Quick Start:**
-```cpp
-// ESP32 code
-String videoId = "FN7ALfpGxiI";  // From MCP search
-String url = "https://your-app.onrender.com/url/" + videoId;
-// Fetch URL → Parse JSON → Play stream
-```
-
-**Services on Render (single public port):**
-- Port 10000: Health check + MCP wrapper + `/audio/{video_id}`, `/url/{video_id}`, `/stream/{video_id}` (download→serve)
-- MCP: Calculator + Music search
-
-## Local Development
-
-1. Install dependencies:
 ```bash
-pip install -r requirements.txt
+uvx mcp-calculator
 ```
 
-2. Set environment variable:
+### Using pip
+
 ```bash
-export MCP_ENDPOINT='wss://your-endpoint-url'
+pip install mcp-calculator
 ```
 
-3. Run locally:
+### From Source
+
 ```bash
-python3 mcp_pipe.py
+git clone https://github.com/quyen-nguyen-270898/mcp-calculator.git
+cd mcp-calculator
+pip install -e .
 ```
 
-## Deploy to Render
+## Usage
 
-1. Push code to GitHub
+### Running the Server
 
-2. Create new Web Service on Render:
-   - Connect your GitHub repository
-   - Select branch: `main`
-   - Build Command: `pip install -r requirements.txt`
-   - Start Command: `python server.py`
+```bash
+python calculator.py
+```
 
-3. Add Environment Variable:
-   - Key: `MCP_ENDPOINT`
-   - Value: Your WebSocket endpoint URL
-   - (Optional) `YOUTUBE_API_KEY`: Official YouTube Data API key for reliable search
-   - (Optional) `PUBLIC_BASE_URL`: Override Render external URL if auto-detection fails
+Or if installed:
 
-4. Deploy!
+```bash
+mcp-calculator
+```
 
-The service will:
-- Start an HTTP server on port 10000 for Render health checks
-- Run MCP pipe in background to connect calculator to your endpoint
-- Auto-restart if MCP connection fails
+### Available Tools
 
-Health check endpoint: `https://your-app.onrender.com/health`
+#### calculator
 
-### Streaming reliability tips
+Evaluates Python mathematical expressions with support for:
+- Basic arithmetic: `+`, `-`, `*`, `/`, `**`, `%`
+- Math module functions: `math.sqrt()`, `math.sin()`, `math.cos()`, etc.
+- Random module: `random.random()`, `random.randint()`, etc.
 
-- Set `YOUTUBE_API_KEY` so searches use the official Data API instead of scraping.
-- You can override proxy frontends without redeploying:
-   - `PIPED_API_INSTANCES` – comma-separated list of Piped API hosts.
-   - `INVIDIOUS_API_INSTANCES` – comma-separated list of Invidious API hosts.
-- The ESP32 stream proxy now **downloads MP3 then streams from cache** (default cache TTL: 6 hours, dir: `/tmp/audio_cache`).
+**Input Schema:**
+```json
+{
+  "python_expression": "string (required) - A valid Python expression to evaluate"
+}
+```
+
+**Examples:**
+- `2 + 2`
+- `math.sqrt(16)`
+- `math.pi * 2`
+- `random.randint(1, 100)`
+- `(5 + 3) * 2 - 4`
+
+### Integration with MCP Clients
+
+#### Claude Desktop Configuration
+
+Add to your Claude Desktop config file:
+
+**MacOS**: `~/Library/Application Support/Claude/claude_desktop_config.json`
+**Windows**: `%APPDATA%\Claude\claude_desktop_config.json`
+
+```json
+{
+  "mcpServers": {
+    "calculator": {
+      "command": "uvx",
+      "args": ["mcp-calculator"]
+    }
+  }
+}
+```
+
+Or using Python directly:
+
+```json
+{
+  "mcpServers": {
+    "calculator": {
+      "command": "python",
+      "args": ["path/to/calculator.py"]
+    }
+  }
+}
+```
+
+#### Using with imcp.pro
+
+This MCP server can be easily added to imcp.pro:
+
+1. **From GitHub**: Simply paste the repository URL in imcp.pro
+2. **Manual Addition**:
+   - **Mode**: STDIO
+   - **Command**: `uvx`
+   - **Parameters**: `mcp-calculator`
+   - No environment variables required
+
+## Development
+
+### Requirements
+
+- Python 3.10 or higher
+- No external dependencies
+
+### Testing
+
+Run the server and send JSON-RPC messages via stdin:
+
+```bash
+echo '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{}}' | python calculator.py
+```
+
+## Protocol Details
+
+This server implements the Model Context Protocol (MCP) specification:
+- Protocol Version: 2024-11-05
+- Transport: STDIO
+- Supported Methods:
+  - `initialize`
+  - `tools/list`
+  - `tools/call`
+  - `ping`
+
+## Security Notes
+
+⚠️ The calculator uses Python's `eval()` with a restricted environment:
+- No access to `__builtins__`
+- Only `math` and `random` modules are available
+- No file system or network access
+
+While this provides basic sandboxing, use caution with untrusted input.
+
+## License
+
+MIT License - See LICENSE file for details
+
+## Contributing
+
+Contributions are welcome! Please feel free to submit a Pull Request.
+
+## Support
+
+If you encounter any issues or have questions:
+- Open an issue on GitHub
+- Check existing issues for solutions
+
+## Changelog
+
+### v1.0.0 (2026-01-30)
+- Initial release
+- Basic calculator functionality
+- Math and random module support
+- STDIO transport implementation
