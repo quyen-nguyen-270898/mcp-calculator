@@ -19,7 +19,9 @@ classifiers = [
     "Programming Language :: Python :: 3.12",
 ]
 
-dependencies = []
+dependencies = [
+    "mcp>=1.0.0",
+]
 
 [project.urls]
 Homepage = "https://github.com/quyen-nguyen-270898/mcp-calculator"
