@@ -1,5 +1,5 @@
 [project]
-name = "mcp-calculator"
+name = "mcp-calculator-qn"
 version = "1.0.0"
 description = "A simple MCP server for mathematical calculations with support for Python expressions, math and random modules"
 readme = "README.md"
@@ -30,6 +30,7 @@ Issues = "https://github.com/quyen-nguyen-270898/mcp-calculator/issues"
 
 [project.scripts]
 mcp-calculator = "mcp_calculator:main"
+mcp-calculator-qn = "mcp_calculator:main"
 
 [build-system]
 requires = ["hatchling"]
